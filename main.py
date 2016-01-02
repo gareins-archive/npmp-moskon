@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 # Change factor
 NO_CHG_TYPE = 0.9
 CHG_FACTOR = 0.5
+N_PROTEINS = 3
+ADD_RM_PROTEIN_EXPRESSION = 0.1
 
 class Type(Enum):
     linear = 1
@@ -49,12 +51,12 @@ class Expression:
         return new_type
 
 class ActRep(Expression):
-    def calc_diff_out(self, prot, proteins):
+    def calc_diff_out(self, prot):
         diff = 0
         if self._typ == Type.linear:
             diff = self._factor
         elif self._typ == Type.encime:
-            ra = 1 if proteins[self._othr].val - prot.val < 0 else 0
+            ra = 1 if self._othr.val - prot.val < 0 else 0
             ra = ra if self._factor > 0 else 1 - ra
             diff = self._factor * ra
         else:
@@ -67,10 +69,10 @@ class ActRep(Expression):
 
 class Activator(ActRep):
     def calc_diff(self, prot, proteins):
-        prot.diff += self.calc_diff_out(prot, proteins)
+        prot.diff += self.calc_diff_out(prot)
 class Repressor(ActRep):
     def calc_diff(self, prot, proteins):
-        prot.diff -= self.calc_diff_out(prot, proteins)
+        prot.diff -= self.calc_diff_out(prot)
 
 class Degradation(Expression):
     def calc_diff(self, prot, proteins):
@@ -79,12 +81,12 @@ class Degradation(Expression):
         elif self._typ == Type.encime:
             diff = self._factor * prot.val / (self._limit + prot.val)
         else:
-            diff = self._factor * prot.val * proteins[self._othr].val
+            diff = self._factor * prot.val * self._othr.val
         prot.diff -= diff
 
     def mutate(self, othr):
-        new_type = super(ActRep, self).get_random_typ(D_TYPES)
-        super(ActRep, self).mutate(othr, new_type)
+        new_type = super(Degradation, self).get_random_typ(D_TYPES)
+        super(Degradation, self).mutate(othr, new_type)
 
 class ProteinModification(Expression):
     def calc_diff(self, prot, proteins):
@@ -95,11 +97,11 @@ class ProteinModification(Expression):
         else:
             print("BAD_123")
         prot.diff -= diff
-        proteins[self._othr].diff += diff
+        self._othr.diff += diff
 
     def mutate(self, othr):
-        new_type = super(ActRep, self).get_random_typ(ARP_TYPES)
-        super(ActRep, self).mutate(othr, new_type)
+        new_type = super(ProteinModification, self).get_random_typ(ARP_TYPES)
+        super(ProteinModification, self).mutate(othr, new_type)
 
 ###############################################
 # End of expressions, now Protein and Network #
@@ -125,56 +127,104 @@ class Protein:
                 break
 
     def rm_expression_pm(self):
-        if len(self.expressions == 3):
-            return
-
-        for k in random.sample(self.expressions.keys(), len(self.expressions)):
-            if k not in ("AR1", "AR2", "DEG"):
-                self.expressions[k] = None
+        for k in random.sample(list(self.expressions.keys()), len(self.expressions)):
+            if k not in ("ACT", "REP", "DEG") and self.expressions[k] is not None:
+                del self.expressions[k]
+                break
 
     def mutate(self, proteins, k=None):
-        if k is None:
-            k = random.choice(self.expressions.keys())
-        exp = self.expressions[k]
+        prot = random.choice(proteins)
+        while prot == self:
+            prot = random.choice(proteins)
 
-        if k not in ("AR1", "AR2", "DEG"):
-
-
+        # Do add/remove protein/protein expression
+        if random.random() < ADD_RM_PROTEIN_EXPRESSION:
+            if random.random() > 0.4:
+                self.add_expression_pm(proteins)
+            else:
+                self.rm_expression_pm()
+        # modify ACT/RET/DEG expression
+        else:
+            if k is None:
+                k = random.choice(list(self.expressions.keys()))
+            self.expressions[k].mutate(prot)
 
     def remove_protein(self, prot, proteins):
         chk = {"ACT": Activator(), "DEG": Degradation(), "REP": Repressor}
         for k, e in chk.items():
-            if self.expressions[k]._othr == protein:
+            if self.expressions[k]._othr == prot:
                 self.expressions[k] = e
                 self.expressions[k].mutate(proteins)
 
-        self.expressions[protein] = None
+        del self.expressions[prot]
 
 class Network:
     def __init__(self):
-        self.proteins = [Protein() for _ in range(3)]
+        self.proteins = [Protein() for _ in range(N_PROTEINS)]
         self.mutation_rate = 5
+        self.graph = None
 
     def mutate(self):
-        for i in range self.mutation_rate():
+        for i in range(self.mutation_rate):
             p = random.choice(self.proteins)
-            self.proteins
+            p.mutate(self.proteins)
 
+    def diff_closure(self):
+        # Defining calc diff closure function
+        # for use in odeint. For every protein
+        def calc_diff(X, t):
+            for i, p in enumerate(self.proteins):
+                p.val = X[i]
+                p.diff = 0
 
+            df = []
+            for p in self.proteins:
+                for e in p.expressions.values():
+                    e.calc_diff(p, self.proteins)
+                df.append(p.diff)
+            return df
+
+        # return the closure
+        return calc_diff
+
+    def analyze_me(self):
+        cls = self.diff_closure()
+        print(cls([1, 1, 1], 1))
+
+        Network.current = self
+        init = [p.val for p in self.proteins]
+        self.time = np.linspace(0, 100, num=3000)
+        self.graph = odeint(self.diff_closure(), init, self.time)
+
+    def plot_me(self):
+        a = self.graph[:, 0]
+        b = self.graph[:, 1]
+        c = self.graph[:, 2]
+
+        plt.plot(self.time, a, 'r--')
+        plt.plot(self.time, b, 'b:')
+        plt.plot(self.time, c, 'g-')
+
+        plt.show()
 
 if __name__ == "__main__":
-    def eq(X, t):
-        x, y = X
-        return [x - y - np.exp(t), x + y + 2 * np.exp(t)]
+    ntw = Network()
+    while True:
+        ntw.analyze_me()
+        ntw.plot_me()
+        ntw.mutate()
 
-    init = [-1.0, -1.0]
-    t = np.linspace(0, 4, num=50)
-    X = odeint(eq, init, t)
 
-    x = X[:, 0]
-    y = X[:, 1]
-
-    plt.plot(t, x, 'k--')
-    plt.plot(t, y, 'k:')
-
-    plt.show()
+#     def eq(X, t):
+#         x, y = X
+#         return [x - y - np.exp(t), x + y + 2 * np.exp(t)]
+# 
+#     init = [-1.0, -1.0]
+#     t = np.linspace(0, 4, num=50)
+#     X = odeint(eq, init, t)
+# 
+#     x = X[:, 0]
+#     y = X[:, 1]
+# 
+#     plt.plot(t, x, 'k--')
+#     plt.plot(t, y, 'k:')
