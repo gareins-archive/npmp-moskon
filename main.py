@@ -201,7 +201,6 @@ class Network:
         self.proteins = [Protein() for _ in range(N_PROTEINS)]
         self.mutation_rate = 5
         self.graph = None
-        self.i = 0
 
         self.time = np.linspace(0, 200, num=16384)
         self.ideal = [OFF_VAL if (t % FREQUENCY) < FREQUENCY / 2 else ON_VAL for t in self.time]
