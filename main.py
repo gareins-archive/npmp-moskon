@@ -6,6 +6,7 @@ import numpy as np
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
 
+CTR = 0
 
 class Type(Enum):
     linear = 1
@@ -18,7 +19,7 @@ ARP_TYPES = (Type.linear, Type.linear, Type.encime)
 # Change factor
 NO_CHG_TYPE = 0.9
 CHG_FACTOR = 0.5
-N_PROTEINS = 3
+N_PROTEINS = 5
 ADD_RM_PROTEIN_EXPRESSION = 0.1
 ADD_RM_PROTEIN = 0.1
 PROTEIN_MUTATION_DEFAULT = 4
@@ -29,6 +30,10 @@ N_NETS_AFTER = 4
 FREQUENCY = 50
 OUTER_DIFF = 3
 DT = 5
+
+ON_VAL = 10
+OFF_VAL = 0
+WORST_EVAL = 1e10
 
 
 class Expression:
@@ -47,9 +52,9 @@ class Expression:
     def mutate(self, other, new_type):
         if random.random() < NO_CHG_TYPE:
             if CHG_FACTOR or self._typ != Type.encime:
-                self._factor *= random.random() * 2
+                self._factor *= random.random() * 1.5
             else:
-                self._limit += (random.random() * 3 - 1)
+                self._limit += (random.random() * 2.5 - 1)
                 if self._limit < 0:
                     self._limit = 0
         else:
@@ -194,7 +199,9 @@ class Network:
         self.proteins = [Protein() for _ in range(N_PROTEINS)]
         self.mutation_rate = 5
         self.graph = None
-        self.time = None
+
+        self.time = np.linspace(0, 200, num=16384)
+        self.ideal = [OFF_VAL if (t % FREQUENCY) < FREQUENCY / 2 else ON_VAL for t in self.time]
 
     def mutate(self):
         if random.random() < ADD_RM_PROTEIN:
@@ -267,24 +274,36 @@ class Network:
         # return the closure
         return calc_diff
 
-    def analyze_me(self):
+    def run_simulation(self):
         Network.current = self
         init = [p.val for p in self.proteins]
-        self.time = np.linspace(0, 200, num=16384)
         try:
             self.graph, info = odeint(self.diff_closure(), init, self.time, hmin=0.0001, hmax=1, printmessg=False, full_output=True)
-            return int(info['message'] != 'Integration successful.')
+            if info['message'] != 'Integration successful.':
+                return WORST_EVAL + 1
+
             # HERE should go the evaluation of the result
+            return self.evaluate_me()
+
         except Exception as e:
-            return 100000
+            return WORST_EVAL + 2
+
+    def evaluate_me(self):
+        eval = WORST_EVAL
+        for p in range(2, len(self.proteins)):
+            eval = min(eval, sum((self.graph[i, p] - self.ideal[i]) ** 2 for i in range(len(self.time))))
+        return eval
 
     def plot_me(self):
+        plt.close()
+
         for i, _ in enumerate(self.proteins):
             g = self.graph[:, i]
             plt.plot(self.time, g)
-            print(i)
 
-        plt.show()
+        global CTR
+        plt.savefig('npmp:' + str(CTR) + '.png', bbox_inches='tight')
+        CTR += 1
 
 def mutation_stuff():
     networks = []
@@ -294,11 +313,12 @@ def mutation_stuff():
         networks.append(n)
 
     while True:
-        analysis = sorted([(n, n.analyze_me()) for n in networks], key=lambda x: x[1])
+        analysis = sorted([(n, n.run_simulation()) for n in networks], key=lambda x: x[1])
+        print(list(a[1] for a in analysis))
+        analysis[0][0].plot_me()
 
         networks = []
         for (ntw, _) in analysis[:N_NETS_AFTER]:
-            # ntw.plot_me()
             multiply = N_NETS_BEFORE / N_NETS_AFTER
             assert(multiply == round(multiply))
 
