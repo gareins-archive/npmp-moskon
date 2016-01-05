@@ -1,5 +1,7 @@
 from enum import Enum
+from copy import deepcopy
 import random
+
 import numpy as np
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
@@ -18,6 +20,12 @@ NO_CHG_TYPE = 0.9
 CHG_FACTOR = 0.5
 N_PROTEINS = 3
 ADD_RM_PROTEIN_EXPRESSION = 0.1
+ADD_RM_PROTEIN = 0.01
+PROTEIN_MUTATION_DEFAULT = 4
+
+N_NETS_BEFORE = 20
+N_NETS_AFTER = 4
+
 FREQUENCY = 50
 OUTER_DIFF = 3
 DT = 5
@@ -188,10 +196,24 @@ class Network:
         self.time = None
 
     def mutate(self):
+        if random.random() < ADD_RM_PROTEIN:
+            self.add_rm_protein()
+
         # Select random protein and mutate "mutation_rate" number of times
         for i in range(self.mutation_rate):
             p = random.choice(self.proteins)
             p.mutate(self.proteins)
+
+    def add_rm_protein(self):
+        if random.random() > 0.5 or len(self.proteins) <= 3:
+            self.proteins.append(Protein())
+            for i in range(PROTEIN_MUTATION_DEFAULT):
+                self.proteins[-1].mutate(self.proteins)
+        else:
+            rmp = random.choice(self.proteins)
+            for p in self.proteins:
+                if p != rmp:
+                    p.remove_protein(rmp, self.proteins)
 
     def diff_closure(self):
         first_in = FREQUENCY / 2
@@ -249,22 +271,40 @@ class Network:
         Network.current = self
         init = [p.val for p in self.proteins]
         self.time = np.linspace(0, 200, num=16384)
-        self.graph = odeint(self.diff_closure(), init, self.time, hmin=0.0001, hmax=1)
+        try:
+            self.graph, info = odeint(self.diff_closure(), init, self.time, hmin=0.0001, hmax=1, printmessg=False, full_output=True)
+            return int(info['message'] != 'Integration successful.')
+            # HERE should go the evaluation of the result
+        except Exception as e:
+            return 100000
 
     def plot_me(self):
-        a = self.graph[:, 0]
-        b = self.graph[:, 1]
-        c = self.graph[:, 2]
-
-        plt.plot(self.time, a, 'r--')
-        plt.plot(self.time, b, 'b:')
-        plt.plot(self.time, c, 'g-')
+        for i, _ in enumerate(self.proteins):
+            g = self.graph[:, i]
+            plt.plot(self.time, g)
 
         plt.show()
 
-if __name__ == "__main__":
-    ntw = Network()
+def mutation_stuff():
+    networks = []
+    for _ in range(N_NETS_BEFORE):
+        n = Network()
+        n.mutate()
+        networks.append(n)
+
     while True:
-        ntw.analyze_me()
-        ntw.plot_me()
-        ntw.mutate()
+        analysis = sorted([(n, n.analyze_me()) for n in networks], key=lambda x: x[1])
+
+        networks = []
+        for (ntw, _) in analysis[:N_NETS_AFTER]:
+            ntw.plot_me()
+            multiply = N_NETS_BEFORE / N_NETS_AFTER
+            assert(multiply == round(multiply))
+
+            for i in range(int(multiply)):
+                n = deepcopy(ntw)
+                n.mutate()
+                networks.append(n)
+
+if __name__ == "__main__":
+    mutation_stuff()
