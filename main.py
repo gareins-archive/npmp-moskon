@@ -5,8 +5,10 @@ import random
 import numpy as np
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
+import os
 
 CTR = 0
+IT = 0
 
 class Type(Enum):
     linear = 1
@@ -199,6 +201,7 @@ class Network:
         self.proteins = [Protein() for _ in range(N_PROTEINS)]
         self.mutation_rate = 5
         self.graph = None
+        self.i = 0
 
         self.time = np.linspace(0, 200, num=16384)
         self.ideal = [OFF_VAL if (t % FREQUENCY) < FREQUENCY / 2 else ON_VAL for t in self.time]
@@ -277,6 +280,9 @@ class Network:
     def run_simulation(self):
         Network.current = self
         init = [p.val for p in self.proteins]
+        global IT
+        IT += 1
+        print(IT)
         try:
             self.graph, info = odeint(self.diff_closure(), init, self.time, hmin=0.0001, hmax=1, printmessg=False, full_output=True)
             if info['message'] != 'Integration successful.':
@@ -299,10 +305,13 @@ class Network:
 
         for i, _ in enumerate(self.proteins):
             g = self.graph[:, i]
-            plt.plot(self.time, g)
+            plt.plot(self.time, g ,label='Protein '+str(i+1))
 
+        plt.legend(bbox_to_anchor=(0., 1.05, 1., .102),loc=3,ncol=2, mode="expand")
         global CTR
-        plt.savefig('npmp:' + str(CTR) + '.png', bbox_inches='tight')
+        global IT
+        plt.title('Iteration: '+str(IT))
+        plt.savefig('npmp_' + str(CTR) + '.png', bbox_inches='tight')
         CTR += 1
 
 def mutation_stuff():
@@ -328,4 +337,7 @@ def mutation_stuff():
                 networks.append(n)
 
 if __name__ == "__main__":
+    filelist = [ f for f in os.listdir(".") if f.endswith(".png") ]
+    for f in filelist:
+        os.remove(f)
     mutation_stuff()
