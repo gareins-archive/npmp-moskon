@@ -20,7 +20,7 @@ NO_CHG_TYPE = 0.9
 CHG_FACTOR = 0.5
 N_PROTEINS = 3
 ADD_RM_PROTEIN_EXPRESSION = 0.1
-ADD_RM_PROTEIN = 0.01
+ADD_RM_PROTEIN = 0.1
 PROTEIN_MUTATION_DEFAULT = 4
 
 N_NETS_BEFORE = 20
@@ -151,7 +151,7 @@ class Protein:
     def rm_expression_pm(self):
         for k in random.sample(list(self.expressions.keys()), len(self.expressions)):
             if k not in ("ACT", "REP", "DEG") and self.expressions[k] is not None:
-                del self.expressions[k]
+                self.expressions.pop(k)
                 break
 
     # Extually mutating this protein
@@ -179,7 +179,8 @@ class Protein:
                 self.expressions[k] = e
                 self.expressions[k].mutate(proteins)
 
-        del self.expressions[protein]
+        if protein in self.expressions:
+            self.expressions.pop(protein)
 
 
 class Network:
@@ -229,11 +230,10 @@ class Network:
                 p.diff = 0
 
             # Calculate diffs from all expressions in all proteins
-            df = []
             for p in self.proteins:
                 for e in p.expressions.values():
                     e.calc_diff(p, self.proteins)
-                df.append(p.diff)
+            df = [p.diff for p in self.proteins]
 
             # Handle output signal with triangle DIFF
             # This has to be done with "triangle" in order for ODE
@@ -282,6 +282,7 @@ class Network:
         for i, _ in enumerate(self.proteins):
             g = self.graph[:, i]
             plt.plot(self.time, g)
+            print(i)
 
         plt.show()
 
@@ -297,7 +298,7 @@ def mutation_stuff():
 
         networks = []
         for (ntw, _) in analysis[:N_NETS_AFTER]:
-            ntw.plot_me()
+            # ntw.plot_me()
             multiply = N_NETS_BEFORE / N_NETS_AFTER
             assert(multiply == round(multiply))
 
