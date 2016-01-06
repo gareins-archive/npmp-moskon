@@ -21,10 +21,10 @@ ARP_TYPES = (Type.linear, Type.linear, Type.encime)
 # Change factor
 NO_CHG_TYPE = 0.9
 CHG_FACTOR = 0.5
-N_PROTEINS = 5
-ADD_RM_PROTEIN_EXPRESSION = 0.1
-ADD_RM_PROTEIN = 0.1
-PROTEIN_MUTATION_DEFAULT = 4
+N_PROTEINS = 3
+ADD_RM_PROTEIN_EXPRESSION = 0.05
+ADD_RM_PROTEIN = 0.02
+PROTEIN_MUTATION_DEFAULT = 1
 
 N_NETS_BEFORE = 20
 N_NETS_AFTER = 4
@@ -308,9 +308,8 @@ class Network:
 
         plt.legend(bbox_to_anchor=(0., 1.05, 1., .102),loc=3,ncol=2, mode="expand")
         global CTR
-        global IT
-        plt.title('Iteration: '+str(IT))
-        plt.savefig('npmp_' + str(CTR) + '.png', bbox_inches='tight')
+        plt.title('Plot Nr: '+str(CTR))
+        plt.savefig('npmp_' + str(CTR // 100)  + str((CTR // 10) % 10) + str(CTR % 10) + '.png', bbox_inches='tight')
         CTR += 1
 
 def mutation_stuff():
