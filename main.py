@@ -24,7 +24,8 @@ CHG_FACTOR = 0.5
 N_PROTEINS = 3
 ADD_RM_PROTEIN_EXPRESSION = 0.05
 ADD_RM_PROTEIN = 0.02
-PROTEIN_MUTATION_DEFAULT = 1
+PROTEIN_MUTATION_DEFAULT = 2
+GENERATION_MUTATION_RATE = 2
 
 N_NETS_BEFORE = 20
 N_NETS_AFTER = 4
@@ -199,7 +200,7 @@ class Network:
     """
     def __init__(self):
         self.proteins = [Protein() for _ in range(N_PROTEINS)]
-        self.mutation_rate = 5
+        self.mutation_rate = GENERATION_MUTATION_RATE
         self.graph = None
 
         self.time = np.linspace(0, 200, num=16384)
@@ -281,7 +282,7 @@ class Network:
         init = [p.val for p in self.proteins]
         global IT
         IT += 1
-        print(IT)
+
         try:
             self.graph, info = odeint(self.diff_closure(), init, self.time, hmin=0.0001, hmax=1, printmessg=False, full_output=True)
             if info['message'] != 'Integration successful.':
@@ -290,13 +291,15 @@ class Network:
             # HERE should go the evaluation of the result
             return self.evaluate_me()
 
-        except Exception as e:
+        except Exception:
             return WORST_EVAL + 2
 
     def evaluate_me(self):
         eval = WORST_EVAL
         for p in range(2, len(self.proteins)):
             eval = min(eval, sum((self.graph[i, p] - self.ideal[i]) ** 2 for i in range(len(self.time))))
+
+        # TODO!
         return eval
 
     def plot_me(self):
@@ -304,11 +307,11 @@ class Network:
 
         for i, _ in enumerate(self.proteins):
             g = self.graph[:, i]
-            plt.plot(self.time, g ,label='Protein '+str(i+1))
+            plt.plot(self.time, g, label='Protein ' + str(i + 1))
 
-        plt.legend(bbox_to_anchor=(0., 1.05, 1., .102),loc=3,ncol=2, mode="expand")
+        plt.legend(bbox_to_anchor=(0., 1.05, 1., .102), loc=3, ncol=2, mode="expand")
         global CTR
-        plt.title('Plot Nr: '+str(CTR))
+        plt.title('Plot Nr: ' + str(CTR))
         plt.savefig('npmp_' + str(CTR // 100)  + str((CTR // 10) % 10) + str(CTR % 10) + '.png', bbox_inches='tight')
         CTR += 1
 
@@ -319,12 +322,28 @@ def mutation_stuff():
         n.mutate()
         networks.append(n)
 
-    while True:
-        analysis = sorted([(n, n.run_simulation()) for n in networks], key=lambda x: x[1])
-        print(list(a[1] for a in analysis))
-        analysis[0][0].plot_me()
+    good_old_analysis = []
 
+    while True:
+        # Preserve previous best
+        analysis = good_old_analysis
+
+        # Do analysis
+        for n in networks:
+            analysis.append((n, n.run_simulation()))
+
+        # Sort analysis
+        analysis = sorted(analysis, key=lambda x: x[1])
+
+        # Print current state
+        best_analysis = analysis[0]
+        avg_analysis = sum(a[1] for a in analysis[:N_NETS_AFTER]) / N_NETS_AFTER
+        print("Generation %d: BEST: %d, AVERAGE: %d" % (CTR, best_analysis[1], avg_analysis))
+        best_analysis[0].plot_me()
+
+        # Generate new mutations
         networks = []
+        good_old_analysis = analysis[:N_NETS_AFTER]
         for (ntw, _) in analysis[:N_NETS_AFTER]:
             multiply = N_NETS_BEFORE / N_NETS_AFTER
             assert(multiply == round(multiply))
@@ -335,7 +354,7 @@ def mutation_stuff():
                 networks.append(n)
 
 if __name__ == "__main__":
-    filelist = [ f for f in os.listdir(".") if f.endswith(".png") ]
+    filelist = [f for f in os.listdir(".") if f.endswith(".png")]
     for f in filelist:
         os.remove(f)
     mutation_stuff()
