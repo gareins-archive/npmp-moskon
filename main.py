@@ -6,6 +6,7 @@ import numpy as np
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
 import os
+import sys
 
 CTR = 0
 IT = 0
@@ -21,23 +22,28 @@ ARP_TYPES = (Type.linear, Type.linear, Type.encime)
 # Change factor
 NO_CHG_TYPE = 0.9
 CHG_FACTOR = 0.5
-N_PROTEINS = 3
+N_PROTEINS = 4
 ADD_RM_PROTEIN_EXPRESSION = 0.05
 ADD_RM_PROTEIN = 0.02
 PROTEIN_MUTATION_DEFAULT = 2
-GENERATION_MUTATION_RATE = 2
+GENERATION_MUTATION_RATE = 4
+RUN_TIME = 200
+N_STEPS = 5e4
 
 N_NETS_BEFORE = 20
 N_NETS_AFTER = 4
 
-FREQUENCY = 50
+FREQUENCY = 100
 OUTER_DIFF = 3
 DT = 5
 
-ON_VAL = 10
+ON_VAL = 3
 OFF_VAL = 0
-WORST_EVAL = 1e10
+WORST_EVAL = 10
+WORST_EVAL_ABS = WORST_EVAL * N_STEPS
 
+BORDER_VALUE = 30
+DIFF_BETWEEN_STATES = 2
 
 class Expression:
     def __init__(self):
@@ -203,7 +209,7 @@ class Network:
         self.mutation_rate = GENERATION_MUTATION_RATE
         self.graph = None
 
-        self.time = np.linspace(0, 200, num=16384)
+        self.time = np.linspace(0, RUN_TIME, num=N_STEPS)
         self.ideal = [OFF_VAL if (t % FREQUENCY) < FREQUENCY / 2 else ON_VAL for t in self.time]
 
     def mutate(self):
@@ -289,22 +295,38 @@ class Network:
                 return WORST_EVAL + 1
 
             # HERE should go the evaluation of the result
-            return self.evaluate_me()
+            return self.evaluate_simple()
 
         except Exception:
             return WORST_EVAL + 2
 
-    def evaluate_me(self):
-        eval = WORST_EVAL
+    def eval_border_check(self):
+        for p in range(len(self.proteins)):
+            for j in range(len(self.time)):
+                if not -1 < self.graph[j, p] < BORDER_VALUE:
+                    return 1
+        return -1				
+			
+    def evaluate_simple(self):
+        if self.eval_border_check() > 0:
+            return WORST_EVAL - 1
+	
+        eval = WORST_EVAL_ABS
         for p in range(2, len(self.proteins)):
             eval = min(eval, sum((self.graph[i, p] - self.ideal[i]) ** 2 for i in range(len(self.time))))
-
-        # TODO!
+		
+        return eval / N_STEPS
+		
+    def evaluate_adv(self):
+        if self.eval_border_check() > 0:
+            return WORST_EVAL - 1
+		
+		
         return eval
 
     def plot_me(self):
         plt.close()
-
+        plt.plot(self.time, self.ideal, label='Ideal')
         for i, _ in enumerate(self.proteins):
             g = self.graph[:, i]
             plt.plot(self.time, g, label='Protein ' + str(i + 1))
@@ -338,7 +360,7 @@ def mutation_stuff():
         # Print current state
         best_analysis = analysis[0]
         avg_analysis = sum(a[1] for a in analysis[:N_NETS_AFTER]) / N_NETS_AFTER
-        print("Generation %d: BEST: %d, AVERAGE: %d" % (CTR, best_analysis[1], avg_analysis))
+        print("Generation %d: BEST: %f, AVERAGE: %f" % (CTR, best_analysis[1], avg_analysis))
         best_analysis[0].plot_me()
 
         # Generate new mutations
