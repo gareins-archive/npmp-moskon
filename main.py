@@ -1,18 +1,15 @@
 from enum import Enum
 from copy import deepcopy
-import random
 
 import numpy as np
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
-import os
-import sys
-import shutil
-import string
-import random
+import os, sys, shutil, string, random, pickle
 
 CTR = 0
-IT = 0
+BEST_EVAL = 99999999.99
+LOAD_FILE_LOC = ""
+LOAD_FILE = False
 
 class Type(Enum):
     linear = 1
@@ -287,10 +284,7 @@ class Network:
         return calc_diff
 
     def run_simulation(self):
-        Network.current = self
         init = [p.val for p in self.proteins]
-        global IT
-        IT += 1
 
         try:
             self.graph, info = odeint(self.diff_closure(), init, self.time, hmin=0.0001, hmax=1, printmessg=False, full_output=True)
@@ -338,7 +332,18 @@ class Network:
         global CTR
         plt.title('Plot Nr: ' + str(CTR))
         plt.savefig('./latest/npmp_' + str(CTR // 100)  + str((CTR // 10) % 10) + str(CTR % 10) + '.png', bbox_inches='tight')
-        CTR += 1
+		
+    def save_network(self):
+        file_Name = './latest/npmp_networks_' + str(CTR // 100)  + str((CTR // 10) % 10) + str(CTR % 10) + '.db'
+        fileObject = open(file_Name,'wb') 
+        pickle.dump(self,fileObject)   
+        fileObject.close()
+		
+def load_network(file_Name):
+    fileObject = open(file_Name,'rb')  
+    n = pickle.load(fileObject) 
+    fileObject.close()
+    return n
 
 def mutation_stuff():
     networks = []
@@ -357,15 +362,26 @@ def mutation_stuff():
         for n in networks:
             analysis.append((n, n.run_simulation()))
 
+        #load here network so run_simulation don't mess it up!
+        global LOAD_FILE, LOAD_FILE_LOC
+        if LOAD_FILE:
+            n2 = load_network(LOAD_FILE_LOC)
+            analysis.append((n2, n2.evaluate_simple())) #change to advanced
+            LOAD_FILE = False
+
         # Sort analysis
         analysis = sorted(analysis, key=lambda x: x[1])
-
+        global CTR, BEST_EVAL
         # Print current state
         best_analysis = analysis[0]
         avg_analysis = sum(a[1] for a in analysis[:N_NETS_AFTER]) / N_NETS_AFTER
         print("Generation %d: BEST: %f, AVERAGE: %f" % (CTR, best_analysis[1], avg_analysis))
-        best_analysis[0].plot_me()
-
+        best_analysis[0].plot_me() #maybe also this generate only if results are better ??
+		#Save the best network into a file only if they are better results than before
+        if BEST_EVAL > best_analysis[1]:
+            best_analysis[0].save_network()
+            BEST_EVAL = best_analysis[1]
+        CTR += 1 #?? just incase we will move plot saving only on best generations 
         # Generate new mutations
         networks = []
         good_old_analysis = analysis[:N_NETS_AFTER]
@@ -378,9 +394,19 @@ def mutation_stuff():
                 n.mutate()
                 networks.append(n)
 
+def prompt_load_network():
+    loc =input('Load best network file loc: ')
+    if os.path.isfile(loc):
+        global LOAD_FILE, LOAD_FILE_LOC
+        LOAD_FILE = True
+        LOAD_FILE_LOC = loc
+				
 if __name__ == "__main__":
+    #moving olg files
     if os.path.exists("./latest"):
         rand = ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for _ in range(10))
         shutil.move("./latest/.","./"+rand+"/")
     os.makedirs("./latest")
+	#generation of networks load'n stuff
+    prompt_load_network()
     mutation_stuff()
