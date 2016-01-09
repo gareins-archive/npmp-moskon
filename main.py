@@ -7,6 +7,9 @@ from scipy.integrate import odeint
 import matplotlib.pyplot as plt
 import os
 import sys
+import shutil
+import string
+import random
 
 CTR = 0
 IT = 0
@@ -334,7 +337,7 @@ class Network:
         plt.legend(bbox_to_anchor=(0., 1.05, 1., .102), loc=3, ncol=2, mode="expand")
         global CTR
         plt.title('Plot Nr: ' + str(CTR))
-        plt.savefig('npmp_' + str(CTR // 100)  + str((CTR // 10) % 10) + str(CTR % 10) + '.png', bbox_inches='tight')
+        plt.savefig('./latest/npmp_' + str(CTR // 100)  + str((CTR // 10) % 10) + str(CTR % 10) + '.png', bbox_inches='tight')
         CTR += 1
 
 def mutation_stuff():
@@ -376,7 +379,8 @@ def mutation_stuff():
                 networks.append(n)
 
 if __name__ == "__main__":
-    filelist = [f for f in os.listdir(".") if f.endswith(".png")]
-    for f in filelist:
-        os.remove(f)
+    if os.path.exists("./latest"):
+        rand = ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for _ in range(10))
+        shutil.move("./latest/.","./"+rand+"/")
+    os.makedirs("./latest")
     mutation_stuff()
