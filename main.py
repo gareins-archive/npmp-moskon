@@ -41,6 +41,8 @@ N_STEPS = int(2e4)
 N_NETS_BEFORE = 20
 N_NETS_AFTER = 4
 
+EVAL_FUNCTION = 1 #0 simple, 1 advanced
+
 ON_VAL = 3
 OFF_VAL = 0
 WORST_EVAL_SIMPLE = 10
@@ -249,7 +251,7 @@ class Network:
     Contains a couple of proteins that are connected with
     some expressions (degradation, activation,...).
     Also includes utilities to simulate the network and analysis.
-    TODO: add analysis and mutation
+    TODO: add analysis
     """
     def __init__(self):
         self.proteins = [Protein() for _ in range(N_PROTEINS)]
@@ -340,8 +342,10 @@ class Network:
             if info['message'] != 'Integration successful.':
                 return WORST_EVAL + 1
 
-            # HERE should go the evaluation of the result
-            return self.evaluate_adv()
+            if EVAL_FUNCTION == 1:
+                return self.evaluate_adv()
+			
+            return self.evaluate_simple()
 
         except Exception:
             return WORST_EVAL + 2
@@ -397,8 +401,10 @@ class Network:
     def plot_me(self):
         plt.close()
 
-        plt.plot([self.time[i] for i in UP_PTS + DN_PTS], self.adv_pts, 'ro', label='Evaluated points')
-        # plt.plot(self.time, self.ideal, label='Ideal')
+        if EVAL_FUNCTION == 1:
+            plt.plot([self.time[i] for i in UP_PTS + DN_PTS], self.adv_pts, 'ro', label='Evaluated points')
+        else:
+            plt.plot(self.time, self.ideal, label='Ideal')
 
         for i, _ in enumerate(self.proteins):
             g = self.graph[:, i]
@@ -443,7 +449,11 @@ def mutation_stuff():
         global LOAD_FILE, LOAD_FILE_LOC
         if LOAD_FILE:
             n2 = load_network(LOAD_FILE_LOC)
-            analysis.append((n2, n2.evaluate_simple()))  # change to advanced
+            if EVAL_FUNCTION == 1:
+                analysis.append((n2, n2.evaluate_adv()))
+            else:
+                analysis.append((n2, evaluate_simple()))  
+		
             LOAD_FILE = False
 
         # Sort analysis
