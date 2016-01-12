@@ -244,8 +244,7 @@ class Protein:
 
         if protein in self.expressions:
             self.expressions.pop(protein)
-
-
+			
 class Network:
     """
     Contains a couple of proteins that are connected with
@@ -421,6 +420,32 @@ class Network:
         pickle.dump(self, f)
         f.close()
 
+    def network_analy_to_file(self):
+        file_name = './latest/prot_' + "{:05d}".format(CTR) + '.txt'
+        f = open(file_name, 'w')
+        print("Generation: " + str(CTR), file=f)
+        print("Eval result: " + str(BEST_EVAL), file=f)
+        print("Number of Proteins: " + str(len(self.proteins)), file=f)
+        for i,p in enumerate(self.proteins):
+            print(file=f)
+            print("------------------Protein "+str(i + 1)+"------------------------", file=f)
+            print("val --> "+str(p.val), file=f)
+            print("diff --> "+str(p.diff), file=f)
+            for n in p.expressions.keys():
+                if n in ("ACT", "REP", "DEG"):
+                    print(" "+n+"     --> "+str(p.expressions[n]._typ), file=f)
+                else:
+                    print(" PM      --> "+str(p.expressions[n]._typ), file=f)
+                print("  factor --> "+str(p.expressions[n]._factor), file=f)
+                print("  limit  --> "+str(p.expressions[n]._limit), file=f)
+                if p.expressions[n]._other == None:
+                    print("  other  --> "+str(p.expressions[n]._other), file=f)
+                else:
+                     for j,r in enumerate(self.proteins):
+                         if r == p.expressions[n]._other:
+                             print("  other protein id --> "+str(j+1), file=f)                   					
+        f.close()
+
 
 def load_network(file_name):
     with open(file_name, 'rb') as f:
@@ -469,6 +494,8 @@ def mutation_stuff():
         if BEST_EVAL > best_analysis[1]:
             best_analysis[0].save_network()
             BEST_EVAL = best_analysis[1]
+            best_analysis[0].network_analy_to_file()
+			
 
         CTR += 1  # ?? just in case we will move plot saving only on best generations
 
