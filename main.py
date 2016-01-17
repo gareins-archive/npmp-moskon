@@ -11,49 +11,58 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.integrate import odeint
 
+# File output and naming variables
 CTR = 0
 BEST_EVAL = 99999999.99
 LOAD_FILE_LOC = ""
 LOAD_FILE = False
 
-
+# Type of expression
 class Type(Enum):
     linear = 1
     encime = 2
     active = 3
 
+# Types of expressions and probabilities in degradation
 D_TYPES = (Type.linear, Type.linear, Type.linear, Type.linear, Type.encime, Type.encime, Type.active)
+# Types of expressions and probabilities for non-degradation
 ARP_TYPES = (Type.linear, Type.linear, Type.encime)
 
-# Change factor
-NO_CHG_TYPE = 0.8
-CHG_FACTOR = 0.5
-N_PROTEINS = 4
-ADD_RM_PROTEIN_EXPRESSION = 0.05
-ADD_RM_PROTEIN = 0.02
+# Mutation factors
+NO_CHG_TYPE = 0.8                 # No change of type at expression mutation
+CHG_FACTOR = 0.5                  # Changing factor vs changing basic value at type active
+N_PROTEINS = 4                    # Number of proteins at Network initialization
+ADD_RM_PROTEIN_EXPRESSION = 0.05  # Probability of adding/removing protein expressions at protein mutation
+ADD_RM_PROTEIN = 0.02             # Probability of addign/removing protein at nework mutation
 
-PROTEIN_MUTATION_DEFAULT = 2
-GENERATION_MUTATION_RATE = 4
+PROTEIN_MUTATION_DEFAULT = 2  # Number of expressions mutated at protein mutation
+GENERATION_MUTATION_RATE = 4  # Number of proteins mutated at network mutation
 
+# ODE parameters
 RUN_TIME = 400
 N_STEPS = int(2e4)
+BORDER_VALUE = 30  # Max value for protein allowed
+FREQUENCY = 100
+DT = 5          # Time while adding protein
+OUTER_DIFF = 3  # how much input protein is added as input signal
 
+# Genetic algorithm parameters (number of networks)
 N_NETS_BEFORE = 20
 N_NETS_AFTER = 4
 
-EVAL_FUNCTION = 1 #0 simple, 1 advanced
+# Choosing evaluvation function
+EVAL_FUNCTION = 1  # 0 simple, 1 advanced
 
+# For Simple Eval function parameters
 ON_VAL = 3
 OFF_VAL = 0
 WORST_EVAL_SIMPLE = 10
 
-BORDER_VALUE = 30
-FREQUENCY = 100
-DT = 5
-OUTER_DIFF = 3
+# For Non-Simple Ecal function
 DIFF_BETWEEN_STATES = 2
 WORST_EVAL_ADV = 1000
 
+# Needed global variables
 UP_PTS = []
 DN_PTS = []
 UP_DN_PTS_INITIALIZED = False
@@ -63,6 +72,10 @@ WORST_EVAL_ABS = WORST_EVAL * N_STEPS
 
 
 def init_adv_eval_pts():
+    """
+    Sets up up/down points for advanced evaluation
+    Does not take input/output, just modifies global variables
+    """
     global UP_PTS, DN_PTS, UP_DN_PTS_INITIALIZED
     if not UP_DN_PTS_INITIALIZED:
         UP_DN_PTS_INITIALIZED = True
@@ -95,11 +108,14 @@ def init_adv_eval_pts():
 
 
 class Expression:
+    """
+    Base class for all kinds of expressions
+    """
     def __init__(self):
-        self._typ = Type.linear
-        self._factor = 1
-        self._limit = 0
-        self._other = None
+        self._typ = Type.linear  # Represenging type of Expression
+        self._factor = 1         # Base kinematic factor for expression
+        self._limit = 1          # Factor for encime type of expressions
+        self._other = None       # Other protein for active/encime types
 
     def set_other(self, other):
         self._other = other
@@ -108,6 +124,11 @@ class Expression:
         return self._other
 
     def mutate(self, other, new_type):
+        """
+        Default mutation function.
+        Using global probability parameters, mutates this expression
+        to new_type/changes factor/changes "other" protein for non-linear expressions etc.
+        """
         if random.random() < NO_CHG_TYPE:
             if CHG_FACTOR or self._typ != Type.encime:
                 self._factor *= random.random() * 1.5
@@ -122,6 +143,9 @@ class Expression:
             self._limit = 0
 
     def get_random_typ(self, types):
+        """
+        Gets random type out of types
+        """
         new_type = random.choice(types)
         while new_type == self._typ:
             new_type = random.choice(types)
@@ -130,7 +154,13 @@ class Expression:
 
 
 class ActRep(Expression):
+    """
+    Base class representing Activator/Repressor expression
+    """
     def calc_diff_out(self, prot):
+        """
+        Calculates Diff for ODE step based on type
+        """
         diff = 0
         if self._typ == Type.linear:
             diff = self._factor
@@ -147,16 +177,31 @@ class ActRep(Expression):
 
 
 class Activator(ActRep):
+    """
+    Class representing Activator expression
+    """
     def calc_diff(self, protein, _):
+        """
+        Calculates Diff using base class's implementation
+        """
         protein.diff += self.calc_diff_out(protein)
 
 
 class Repressor(ActRep):
+    """
+    Class representing Repressor expression
+    """
     def calc_diff(self, protein, _):
+        """
+        Calculates Diff using base class's implementation
+        """
         protein.diff -= self.calc_diff_out(protein)
 
 
 class Degradation(Expression):
+    """
+    Class representing Degradation expression
+    """
     def calc_diff(self, prot, _):
         if self._typ == Type.linear:
             diff = prot.val * self._factor
@@ -167,12 +212,21 @@ class Degradation(Expression):
         prot.diff -= diff
 
     def mutate(self, other, new_type=None):
+        """
+        Mutation function calling base class's implementation
+        """
         new_type = super(Degradation, self).get_random_typ(D_TYPES)
         super(Degradation, self).mutate(other, new_type)
 
 
 class ProteinModification(Expression):
+    """
+    Class representing Protein Modification expression
+    """
     def calc_diff(self, protein, _):
+        """
+        Calculated diff for this AND other protein
+        """
         diff = 0
         if self._typ == Type.linear:
             diff = self._factor * protein.val
@@ -183,6 +237,9 @@ class ProteinModification(Expression):
         self._other.diff += diff
 
     def mutate(self, other, new_type=None):
+        """
+        Mutation function calling base class's implementation
+        """
         new_type = super(ProteinModification, self).get_random_typ(ARP_TYPES)
         super(ProteinModification, self).mutate(other, new_type)
 
@@ -192,17 +249,24 @@ class ProteinModification(Expression):
 
 
 class Protein:
+    """
+    Class represanting a protein
+    """
     def __init__(self):
-        self.val = 1
-        self.diff = 0
+        self.val = 1   # Current value
+        self.diff = 0  # Differential for ODE
+
+        # Dictionary of expressions (here default expressions)
         self.expressions = {
             "ACT": Activator(),
             "REP": Repressor(),
             "DEG": Degradation(),
         }
 
-    # A mutation that adds ProteinMutation expression to protein
     def add_expression_pm(self, proteins):
+        """
+        A mutation that adds ProteinMutation expression to protein
+        """
         for prot in random.sample(proteins, len(proteins)):
             if prot not in self.expressions and prot != self:
                 new_expr = ProteinModification()
@@ -210,15 +274,33 @@ class Protein:
                 self.expressions[prot] = new_expr
                 break
 
-    # A mutation that removes ProteinMutation expression to protein
     def rm_expression_pm(self):
+        """
+        A mutation that removes ProteinMutation expression to protein
+        """
         for k in random.sample(list(self.expressions.keys()), len(self.expressions)):
             if k not in ("ACT", "REP", "DEG") and self.expressions[k] is not None:
                 self.expressions.pop(k)
                 break
 
-    # Actually mutating this protein
+    def remove_protein(self, protein, proteins):
+        """
+        A mutation that removes a protein from network
+        """
+        chk = {"ACT": Activator(), "DEG": Degradation(), "REP": Repressor}
+        for k, e in chk.items():
+            if self.expressions[k].get_other == protein:
+                self.expressions[k] = e
+                self.expressions[k].mutate(proteins)
+
+        if protein in self.expressions:
+            self.expressions.pop(protein)
+
     def mutate(self, proteins, k=None):
+        """
+        Actually mutating this protein based on 
+        parameters at the begging of the file
+        """
         prot = random.choice(proteins)
         while prot == self:
             prot = random.choice(proteins)
@@ -235,42 +317,41 @@ class Protein:
                 k = random.choice(list(self.expressions.keys()))
             self.expressions[k].mutate(prot)
 
-    def remove_protein(self, protein, proteins):
-        chk = {"ACT": Activator(), "DEG": Degradation(), "REP": Repressor}
-        for k, e in chk.items():
-            if self.expressions[k].get_other == protein:
-                self.expressions[k] = e
-                self.expressions[k].mutate(proteins)
 
-        if protein in self.expressions:
-            self.expressions.pop(protein)
-			
 class Network:
     """
     Contains a couple of proteins that are connected with
     some expressions (degradation, activation,...).
     Also includes utilities to simulate the network and analysis.
-    TODO: add analysis
     """
     def __init__(self):
+        # List of proteins in the network
         self.proteins = [Protein() for _ in range(N_PROTEINS)]
-        self.mutation_rate = GENERATION_MUTATION_RATE
+        # Graph returned by ODE
         self.graph = None
-
+        # Time
         self.time = np.linspace(0, RUN_TIME, num=N_STEPS)
+        # Ideal values of protein in simple evaluation 
         self.ideal = [OFF_VAL if (t % FREQUENCY) < FREQUENCY / 2 else ON_VAL for t in self.time]
+        # Points for drawing in advanced evaluation
         self.adv_pts = []
 
     def mutate(self):
+        """
+        Mutating network...
+        """
         if random.random() < ADD_RM_PROTEIN:
             self.add_rm_protein()
 
         # Select random protein and mutate "mutation_rate" number of times
-        for i in range(self.mutation_rate):
+        for i in range(GENERATION_MUTATION_RATE):
             p = random.choice(self.proteins)
             p.mutate(self.proteins)
 
     def add_rm_protein(self):
+        """
+        Mutation, where we add/remove a protein
+        """
         if random.random() > 0.5 or len(self.proteins) <= 3:
             self.proteins.append(Protein())
             for i in range(PROTEIN_MUTATION_DEFAULT):
@@ -282,6 +363,9 @@ class Network:
                     p.remove_protein(rmp, self.proteins)
 
     def diff_closure(self):
+        """
+        Builds function for ODE and returns it
+        """
         first_in = FREQUENCY / 2
         second_in = FREQUENCY
         k = 4 * OUTER_DIFF / (DT * DT)
@@ -333,6 +417,9 @@ class Network:
         return calc_diff
 
     def run_simulation(self):
+        """
+        Runs a simulation and evaluates it
+        """
         init = [p.val for p in self.proteins]
 
         # noinspection PyBroadException
@@ -341,15 +428,15 @@ class Network:
             if info['message'] != 'Integration successful.':
                 return WORST_EVAL + 1
 
-            if EVAL_FUNCTION == 1:
-                return self.evaluate_adv()
-			
-            return self.evaluate_simple()
+            return self.evaluate_adv() if EVAL_FUNCTION == 1 else self.evaluate_simple()
 
         except Exception:
             return WORST_EVAL + 2
 
     def eval_border_check(self):
+        """
+        Checking if some of the proteins gets to some crazy values
+        """
         for p in range(len(self.proteins)):
             for j in range(len(self.time)):
                 if not -1 < self.graph[j, p] < BORDER_VALUE:
@@ -357,6 +444,9 @@ class Network:
         return -1
 
     def evaluate_simple(self):
+        """
+        Simple fitness/evaluation function
+        """
         if self.eval_border_check() > 0:
             return WORST_EVAL - 1
 
@@ -367,6 +457,9 @@ class Network:
         return fitness / N_STEPS
 
     def evaluate_adv(self):
+        """
+        Advanced fitness/evaluation function
+        """
         if self.eval_border_check() > 0:
             return WORST_EVAL + 1
 
@@ -379,14 +472,19 @@ class Network:
             up_vals = [self.graph[i, p] for i in UP_PTS]
             dn_vals = [self.graph[i, p] for i in DN_PTS]
 
-            diff_up = max(up_vals) - min(up_vals)
-            diff_dn = max(dn_vals) - min(dn_vals)
+            diff_up = max(up_vals) - min(up_vals)  # Variance for values at up points
+            diff_dn = max(dn_vals) - min(dn_vals)  # Variance for values at down points
 
+            # A bit convoluted function for evaluating mean up and down values
             diff_up_dn = sum(up_vals) / len(UP_PTS) - sum(dn_vals) / len(DN_PTS)
-            if diff_up_dn > DIFF_BETWEEN_STATES:
+
+            # If big enough...
+            if diff_up_dn > DIFF_BETWEEN_STATES: 
                 diff_up_dn = 0
+            # If too small, very bad evaluation 
             elif diff_up_dn < DIFF_BETWEEN_STATES / 10:
                 diff_up_dn = WORST_EVAL * (1 - diff_up_dn)
+            # If somewhere in the middle...
             else:
                 diff_up_dn = DIFF_BETWEEN_STATES - diff_up_dn
 
@@ -398,6 +496,9 @@ class Network:
         return fitness
 
     def plot_me(self):
+        """
+        Plotting facilities for Network
+        """
         plt.close()
 
         if EVAL_FUNCTION == 1:
@@ -415,45 +516,54 @@ class Network:
         plt.savefig('./latest/img_' + "{:05d}".format(CTR) + '.png', bbox_inches='tight')
 
     def save_network(self):
-        file_name = './latest/net_' + "{:05d}".format(CTR) + '.p'
-        f = open(file_name, 'wb')
-        pickle.dump(self, f)
-        f.close()
+        """
+        Saves network to a file
+        """
+        with open('./latest/net_' + "{:05d}".format(CTR) + '.p', 'wb') as f:
+            pickle.dump(self, f)
 
     def network_analy_to_file(self):
-        file_name = './latest/prot_' + "{:05d}".format(CTR) + '.txt'
-        f = open(file_name, 'w')
-        print("Generation: " + str(CTR), file=f)
-        print("Eval result: " + str(BEST_EVAL), file=f)
-        print("Number of Proteins: " + str(len(self.proteins)), file=f)
-        for i,p in enumerate(self.proteins):
-            print(file=f)
-            print("------------------Protein "+str(i + 1)+"------------------------", file=f)
-            print("val --> "+str(p.val), file=f)
-            print("diff --> "+str(p.diff), file=f)
+        """
+        Saves network properties to a file for later analysis
+        """
+        s = "Generation: " + str(CTR)
+        s += "\nEval result: " + str(BEST_EVAL)
+        s += "\nNumber of Proteins: " + str(len(self.proteins))
+        for i, p in enumerate(self.proteins):
+            s += "\n ------------------Protein " + str(i + 1) + "------------------------"
+            s += "\nval --> " + str(p.val)
+            s += "\ndiff --> " + str(p.diff)
             for n in p.expressions.keys():
                 if n in ("ACT", "REP", "DEG"):
-                    print(" "+n+"     --> "+str(p.expressions[n]._typ), file=f)
+                    s += "\n " + n + "     --> " + str(p.expressions[n]._typ)
                 else:
-                    print(" PM      --> "+str(p.expressions[n]._typ), file=f)
-                print("  factor --> "+str(p.expressions[n]._factor), file=f)
-                print("  limit  --> "+str(p.expressions[n]._limit), file=f)
-                if p.expressions[n]._other == None:
-                    print("  other  --> "+str(p.expressions[n]._other), file=f)
+                    s += "\n PM      --> " + str(p.expressions[n]._typ)
+                    s += "\n  factor --> " + str(p.expressions[n]._factor)
+                    s += "\n  limit  --> " + str(p.expressions[n]._limit)
+
+                if p.expressions[n]._other is None:
+                    s += "\n  other  --> " + str(p.expressions[n]._other)
                 else:
-                     for j,r in enumerate(self.proteins):
-                         if r == p.expressions[n]._other:
-                             print("  other protein id --> "+str(j+1), file=f)                   					
-        f.close()
+                    for j, r in enumerate(self.proteins):
+                        if r == p.expressions[n]._other:
+                            s += "\n  other protein id --> " + str(j + 1)
+
+        with open('./latest/prot_' + "{:05d}".format(CTR) + '.txt', 'w') as f:
+            print(s, file=f)
 
 
 def load_network(file_name):
+    """
+    Loads network from file
+    """
     with open(file_name, 'rb') as f:
         n = pickle.load(f)
         return n
 
-
 def mutation_stuff():
+    """
+    Mutation algorithm, used in main function
+    """
     networks = []
     for _ in range(N_NETS_BEFORE):
         n = Network()
@@ -478,7 +588,7 @@ def mutation_stuff():
                 analysis.append((n2, n2.evaluate_adv()))
             else:
                 analysis.append((n2, evaluate_simple()))  
-		
+
             LOAD_FILE = False
 
         # Sort analysis
@@ -495,7 +605,6 @@ def mutation_stuff():
             best_analysis[0].save_network()
             BEST_EVAL = best_analysis[1]
             best_analysis[0].network_analy_to_file()
-			
 
         CTR += 1  # ?? just in case we will move plot saving only on best generations
 
@@ -513,16 +622,19 @@ def mutation_stuff():
 
 
 def prompt_load_network():
+    """
+    Prompts user to load
+    """
     loc = input('Load best network file loc: ')
     if os.path.isfile(loc):
         global LOAD_FILE, LOAD_FILE_LOC
         LOAD_FILE = True
         LOAD_FILE_LOC = loc
-                
+
 if __name__ == "__main__":
     # moving old files
     if os.path.exists("./latest"):
-        rand = ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for _ in range(10))
+        rand = ''.join(random.SystemRandom().choice(string.ascii_letters) for _ in range(10))
         shutil.move("./latest", "./" + rand)
 
     os.makedirs("./latest")
